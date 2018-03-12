@@ -1,0 +1,29 @@
+---
+title: "Kaggle Competition: Kobe Bryant Shot Selection"
+author: "Javier Guzmán Figueira Domínguez"
+date: "12/03/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/cento/Documents/MasterUIMP/Practicas/supervisados/kobe-bryant-shot-selection")
+```
+
+# Introducción
+
+Texto aquí...
+
+```{r}
+data <- read.csv("data.csv")
+
+dim(data)
+
+str(data)
+
+sum(is.na(data))
+
+sum(is.na(dplyr::select(data, - shot_made_flag)))
+sum(is.na(data$shot_made_flag))
+```
