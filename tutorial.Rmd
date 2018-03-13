@@ -188,7 +188,6 @@ unique(data$period)
 plotAccuracyByFeature(train$season, "Season", 60)
 ```
 
-
 ```{r}
 plotAccuracyByFeature(as.factor(train$period), "Period")
 ```
@@ -203,10 +202,29 @@ unique(data$playoffs)
 plotAccuracyByFeature(as.factor(train$playoffs), "Play-off")
 ```
 
+Así mismo, puede ser relevante estudiar las variables *minutes_remaining* y *seconds_remaining*. Estas propiedades expresa los segundos y minutos restantes en el momento del lanzamiento. Al visualizarlos, no se aprecia que estas características tengan un impacto claro en la probabilidad de acierto/fallo. Se ha podido apreciar que lo mismo ocurre con las otras variables incluídas en esta categoría.
+
+```{r}
+plotAccuracyByFeature(as.factor(train$minutes_remaining), "Minutes remaing")
+plotAccuracyByFeature(as.factor(train$seconds_remaining), "Seconds remaining", 90)
+```
+
 Finalmente, la variable *game_date* representa la fecha en la que se ha producido cada enfrentamiento y, por lo tanto, cada tiro.
 
 ## Variables referentes a la cancha
 
+lat
+loc_x
+loc_y
+lon
+shot_zone_area
+shot_zone_basic
+shot_zone_range
+shot_distance
+
 ```{r}
 
 ```
+
+
+
