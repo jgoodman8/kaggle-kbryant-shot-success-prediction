@@ -20,31 +20,193 @@ La competición proporciona un dataset con 30.697 instancias y 25 variables, incl
 El conjunto de test está representado por un subconjunto de 5.000 intancias con ausencia de la etiqueta de clase. Para estas instancias, se deberá de predecir la probabilidad que cada tiro se enceste. El *score* utilizado por *Kaggle* en esta competición es la pérdida logarítica o *log loss*.
 
 ```{r}
+library(ggplot2)
+
 data <- read.csv("data.csv")
 
 dim(data)
-
-sum(is.na(data))
-
-sum(is.na(dplyr::select(data, - shot_made_flag)))
-sum(is.na(data$shot_made_flag))
 ```
 
 # Análisis de la variables
+
+En esta sección, se realizará una describición y análisis de cada una de las variables predictoras del dataset y la variable clase. A continuación, se muestra el listado de variables con algunas de sus características internas.
 
 ```{r}
 str(data)
 ```
 
-## action_type
+## Variable clase: *shot_made_flag*
 
-Variable que referencia el tipo de acción mediante el que se realizó/intentó la canasta. Se definen 57 tipos diferentes de acciones, siendo *Jump Shot* la más frecuente.
+Tal y como se ha comentado, existen 5.000 instancias sin los valores de la variable clase. Estas serán las instancias para las que debamos realizar nuestra predicción.
+
+```{r}
+print("Número de instancias totales con valores perdidos")
+sum(is.na(data$shot_made_flag))
+
+print("Número de instancias totales con valores perdidos, no teniendo en cuenta 'shot_made_flag'")
+sum(is.na(dplyr::select(data, - shot_made_flag)))
+```
+
+Por consiguiente, realizaremos una separación de ambos subconjuntos y los denominaremos conjuntos de entrenamiento o *train* y de prueba o *test*. Es obvio que el conjunto de test contedrá las 5.000 instancias con ausencia de etiqueta para *shot_made_flag*. Por otra parte, el conjunto de entrenamiento ahora constará de un total de 25.697 instancias.
+
+```{r}
+train <- data[!is.na(data$shot_made_flag),]
+test <- data[is.na(data$shot_made_flag),]
+
+train$shot_made_flag <- as.factor(train$shot_made_flag)
+test <- dplyr::select(test, - shot_made_flag)
+
+dim(train)
+
+dim(test)
+```
+
+Antes de analizar las variables predictoras, observamos la distribución de la variables clase y advertimos que las categorías están bastante parejas, al menos en el conjunto de entrenamiento. De esta forma, un 55,39% de los tiros han sido fallidos y el restante 44,62% consta de tiros encestados, tal y como muestra la gráfica.
+
+```{r}
+shot_made_flag.misses <- format(round((length(train$shot_made_flag[train$shot_made_flag == 0])/nrow(train)) * 100,  2), nsmall = 2)
+shot_made_flag.swishes <- format(round((length(train$shot_made_flag[train$shot_made_flag == 1])/nrow(train)) * 100,  2), nsmall = 2)
+shot_made_flag.names <- c(paste("Misses - ", shot_made_flag.misses, "%"), paste("Swishes - ", shot_made_flag.swishes, "%"))
+
+barplot(table(train$shot_made_flag), names = shot_made_flag.names)
+```
+
+## Clasificación del tiro según la forma
+
+La variable *action_type* referencia el tipo de acción mediante el que se realizó/intentó la canasta. Se definen hasta 57 tipos diferentes de acciones, siendo *Jump Shot* la más frecuente. A continuación, se muestran dichos tipos:
 
 ```{r}
 levels(data$action_type)
 ```
 
+A continuación, se muestra la relación entre la preción en el tiro según el tipo de acción realizada. Dado que la variable *action_type* contiene multitud de categorías, se han seleccionado aquellas que representan más de 20 lanzamientos. Las restantes se han juntado en una nueva categoría, bajo el nombre de *Others*.
+
 ```{r}
-actions <- train %>% count(data$action_type) %>% arrange(desc(n)) %>% filter(n < 20)
-train$action_type[train$action_type %in% actions$action_type] <- "Other"
+action_type <- train$action_type
+action_type.is.frequent <- sapply(levels(action_type), function(level){ length(action_type[action_type == level]) > 20 })
+action_type.frequent.levels <- subset(levels(action_type), action_type.is.frecuent)
+
+action_type <- as.character(action_type)
+action_type[!action_type %in% action_type.frequent.levels] <- "Other"
+action_type <- as.factor(action_type)
+```
+
+A continuación, se define una función para mostrar la proporción de aciertos y errores (en los tiros realizados), en función de una determina característica y ordenados en función de dicha proporción
+
+```{r}
+plotOrderedAccuracyByFeature <- function(feature) {
+
+  temp <- prop.table(table(feature, train$shot_made_flag), 1)
+  temp <- as.data.frame.matrix(temp)
+  temp$shot <- rownames(temp)
+  
+  ggplot(temp, aes(x = reorder(shot, `1`), y = 1)) +
+    geom_point(aes(y = `1`), size = 2, stat = "identity") + 
+    coord_flip() + 
+    xlab("") +
+    ylab("Accuracy")
+}
+```
+
+Se aprecia como, efectivamente, existe una clara diferencia de probabilidad de acierto según el tipo de acción. Los tipos con mayor *accuracy* son *Slam Dunk Shot*, *Driving Slam Dunk Shot* y *Driving Dunk Shot*, mientras que *Jump Shot*, *Tip Shot*, *Hook Shot* y *Layup Shot* son las acciones con menor probabilidad de acierto.
+
+```{r}
+plotOrderedAccuracyByFeature(action_type)
+```
+
+
+Otra variable que describe el tipo de tiro realizado es *combined_shot_type*. Es de tipo categórica y comprende los siguientes tipos:
+
+```{r}
+levels(train$combined_shot_type)
+```
+
+De la misma forma que se hizo con la variable *action_type*, realizaremos una comparativa entre los tipos de tiros y sus respectivas probabilidades de acierto. De igual manera, existen claras relaciones en dicha comparativa. Observamos una alta probabilidad asociada a mates (*dunks*) y tiros libres (*Bank Shots*).
+
+```{r}
+plotOrderedAccuracyByFeature(train$combined_shot_type)
+```
+
+Finalmente, la variable *shot_type* también nos aporta valiosa información sobre el tipo de tiro. Esta variable categórica, nos informa de si se trata de un tiro de 2 o 3 puntos.
+
+```{r}
+levels(data$shot_type)
+```
+
+A continuación, se representa su relación con la precisión en los tiros realizados. Para ello, se define una función, que de forma muy similar a la anterior, nos muestra la la proporción de aciertos y errores (en los tiros realizados), en función de una característica dada.
+
+```{r}
+plotAccuracyByFeature <- function(feature, feature.name, x.angle = 0) {
+  ggplot(data = train, aes(x = feature)) +  
+    geom_bar(aes(fill = shot_made_flag), stat = "count", position = "fill") + 
+    xlab(feature.name) + 
+    ylab("Accuracy") + 
+    theme(axis.text.x = element_text(angle = x.angle, hjust = ifelse(x.angle == 0, .5, 1))) + 
+    guides(fill = guide_legend(title = "Shot swished"))
+}
+```
+
+```{r}
+plotAccuracyByFeature(train$shot_type, "Shot type")
+```
+
+## Identificadores genéricos
+
+Las propiedades *game_id* y *game_event_id* representan los idenficadores de partido y de evento en cada partido, respectivamente. En princio, no aportan información más allá de ayudarnos a estudiar las acciones agrupadas por partido. 
+
+En cuanto a las variables *team_id* y *team_name*, carencen completamente de interés. Estas recogen, respectivamente, el idenficador de equipo y su nombre. Dado que el dataset contiene datos sobre los tiros realizados en un único equipo, estas características no aportan información útil.
+
+```{r}
+unique(data$team_id)
+
+levels(data$team_name)
+```
+
+## Variables referentes al partido
+
+La variable *matchup* incluye la información de los equipos que han participado en el partido. Sin embargo, sabemos que el dataset recoge los datos de los tiros realizados por K. Bryant en Los Angeles Lakers y la variable *opponent* contiene el nombre del equipo advesario. La información útil que podemos extraer de *matchup* es saber si una determinada acción se ha realizado como local o visitante.
+
+```{r}
+print("Oponentes")
+levels(data$opponent)
+
+print("Enfrentamientos")
+levels(data$matchup)
+```
+
+Así mismo, las variables *season* y *period* referencian la temporada en la que se produjo el tiro y el periodo dentro del partido, respectivamente.
+
+```{r}
+print("Temporadas")
+levels(data$season)
+
+print("Periodos del partido")
+unique(data$period)
+```
+
+```{r}
+plotAccuracyByFeature(train$season, "Season", 60)
+```
+
+
+```{r}
+plotAccuracyByFeature(as.factor(train$period), "Period")
+```
+
+Otra variable interesante podría ser *playoffs*, ya que nos informa si un partido dado es de play-off (representado con un 1) o no (0).
+
+```{r}
+unique(data$playoffs)
+```
+
+```{r}
+plotAccuracyByFeature(as.factor(train$playoffs), "Play-off")
+```
+
+Finalmente, la variable *game_date* representa la fecha en la que se ha producido cada enfrentamiento y, por lo tanto, cada tiro.
+
+## Variables referentes a la cancha
+
+```{r}
+
 ```
