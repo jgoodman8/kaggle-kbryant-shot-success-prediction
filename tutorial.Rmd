@@ -13,17 +13,25 @@ knitr::opts_knit$set(root.dir = "C:/Users/cento/Documents/MasterUIMP/Practicas/s
 
 # Introducción
 
-Texto aquí...
+En este documento se tratará el problema presentado la competición de [Kaggle](https://www.kaggle.com/) bajo el título [Kobe Bryant Shot Selection](https://www.kaggle.com/c/kobe-bryant-shot-selection). El objetivo de esta competición es la de realizar una clasificación de tiros encestados y fallados por Kobe Bryant.
+
+La competición proporciona un dataset con 30.697 instancias y 25 variables, incluída la variable clase. Esta variable clase está definida de forma binaria, tomando valor 1 en caso de tratarse de un tiro acertado y 0 en caso de un tiro fallido.
+
+El conjunto de test está representado por un subconjunto de 5.000 intancias con ausencia de la etiqueta de clase. Para estas instancias, se deberá de predecir la probabilidad que cada tiro se enceste. El *score* utilizado por *Kaggle* en esta competición es la pérdida logarítica o *log loss*.
 
 ```{r}
 data <- read.csv("data.csv")
 
 dim(data)
 
-str(data)
-
 sum(is.na(data))
 
 sum(is.na(dplyr::select(data, - shot_made_flag)))
 sum(is.na(data$shot_made_flag))
+```
+
+# Análisis de la variables
+
+```{r}
+str(data)
 ```
