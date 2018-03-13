@@ -35,3 +35,16 @@ sum(is.na(data$shot_made_flag))
 ```{r}
 str(data)
 ```
+
+## action_type
+
+Variable que referencia el tipo de acción mediante el que se realizó/intentó la canasta. Se definen 57 tipos diferentes de acciones, siendo *Jump Shot* la más frecuente.
+
+```{r}
+levels(data$action_type)
+```
+
+```{r}
+actions <- train %>% count(data$action_type) %>% arrange(desc(n)) %>% filter(n < 20)
+train$action_type[train$action_type %in% actions$action_type] <- "Other"
+```
