@@ -84,7 +84,7 @@ A continuación, se muestra la relación entre la preción en el tiro según el tipo
 ```{r}
 action_type <- train$action_type
 action_type.is.frequent <- sapply(levels(action_type), function(level){ length(action_type[action_type == level]) > 20 })
-action_type.frequent.levels <- subset(levels(action_type), action_type.is.frecuent)
+action_type.frequent.levels <- subset(levels(action_type), action_type.is.frequent)
 
 action_type <- as.character(action_type)
 action_type[!action_type %in% action_type.frequent.levels] <- "Other"
@@ -209,22 +209,52 @@ plotAccuracyByFeature(as.factor(train$minutes_remaining), "Minutes remaing")
 plotAccuracyByFeature(as.factor(train$seconds_remaining), "Seconds remaining", 90)
 ```
 
-Finalmente, la variable *game_date* representa la fecha en la que se ha producido cada enfrentamiento y, por lo tanto, cada tiro.
+Finalmente, la variable *game_date* representa la fecha en la que se ha producido cada enfrentamiento y, por lo tanto, cada tiro. Así mismo, las variables *lat* y *lon* representan la latitud y logitud en la que se realizaron los tiros.
 
 ## Variables referentes a la cancha
 
-lat
-loc_x
-loc_y
-lon
-shot_zone_area
-shot_zone_basic
-shot_zone_range
-shot_distance
+En primer lugar, prestamos atención a las variables *loc_x* y *loc_y*. Conjuntamente representan las posición de la cancha de baloncesto en la que se realizó cada lanzamiento. Observamos como, a simple vista, no existe ninguna zona de la cancha con una mayor concentración de canastas o errores.
 
 ```{r}
-
+ggplot(train, aes(x = loc_x, y = loc_y)) +
+    geom_point(aes(color = shot_made_flag), alpha = 0.5, size = 0.5) +
+    ylim(c(-50, 400)) +
+    theme_void() +
+    facet_grid(~shot_made_flag)
 ```
 
+La variables *shot_zone_area*, *shot_zone_basic* y *shot_zone_range* representan la cancha dividada por zonas y expresan la zona en la que se produjo la acción. En primer lugar, mostramos las parcelas de la cancha:
 
+```{r}
+ggplot(train, aes(x = loc_x, y = loc_y)) +
+    geom_point(aes(color = shot_zone_area), alpha = 0.5, size = 0.5) +
+    ylim(c(-50, 400)) +
+    guides(fill = guide_legend(title = "Shot zone areas"))
+
+ggplot(train, aes(x = loc_x, y = loc_y)) +
+    geom_point(aes(color = shot_zone_basic), alpha = 0.5, size = 0.5) +
+    ylim(c(-50, 400)) +
+    guides(fill = guide_legend(title = "Shot zone basic"))
+
+ggplot(train, aes(x = loc_x, y = loc_y)) +
+    geom_point(aes(color = shot_zone_range), alpha = 0.5, size = 0.5) +
+    ylim(c(-50, 400)) +
+    guides(fill = guide_legend(title = "Shot zone range"))
+```
+
+A continuación, se muestra el ratio de acierto en cada una de las zonas de la cancha.
+
+```{r}
+plotAccuracyByFeature(as.factor(train$shot_zone_area), "Shot zone area")
+plotAccuracyByFeature(as.factor(train$shot_zone_basic), "Shot zone basic")
+plotAccuracyByFeature(as.factor(train$shot_zone_range), "Shot zone range")
+```
+
+Finalmente, la variable *shot_distance* describe la distancia a la que se ha realizado el tiro, con respecto a la canasta.
+
+```{r}
+plotAccuracyByFeature(as.factor(train$shot_distance), "Shot distance")
+```
+
+# Preprocesado
 
