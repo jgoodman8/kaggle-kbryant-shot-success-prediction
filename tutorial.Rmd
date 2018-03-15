@@ -20,6 +20,7 @@ La competición proporciona un dataset con 30.697 instancias y 25 variables, incl
 El conjunto de test está representado por un subconjunto de 5.000 intancias con ausencia de la etiqueta de clase. Para estas instancias, se deberá de predecir la probabilidad que cada tiro se enceste. El *score* utilizado por *Kaggle* en esta competición es la pérdida logarítica o *log loss*.
 
 ```{r}
+library(caret)
 library(ggplot2)
 
 data <- read.csv("data.csv")
@@ -256,5 +257,71 @@ Finalmente, la variable *shot_distance* describe la distancia a la que se ha rea
 plotAccuracyByFeature(as.factor(train$shot_distance), "Shot distance")
 ```
 
-# Preprocesado
+# Preprocesado y entrenamiento
+
+En primer lugar, eliminamos las variables que, tal y como se ha comentado en la sección anterior, no aportan información relevante.
+
+```{r}
+train <- dplyr::select(train, - game_event_id)
+train <- dplyr::select(train, - game_id)
+train <- dplyr::select(train, - team_id)
+train <- dplyr::select(train, - team_name)
+train <- dplyr::select(train, - shot_id)
+
+# TODO: Eliminar game_date?
+```
+
+```{r}
+train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
+```
+
+A continuación, utilizamos la variable *matchup* para obtener información más valiosa que el nombre del enfrentamiento. Los enfrentamientos que contienen el símbolo "*@*"" representan enfrentamientos como equipo local. Por consiguiente, los partidos que contienen "*VS*" en el nombre, son partidos jugados como visitante. En función de esto, creamos la variable *visitor* con el fin de clarificar el rol del equipo en el partido. Aún así, no se observa diferencia en la efectividad en relación a jugar un partido como visitante o como local
+
+```{r}
+train$visitor <- ifelse(grepl("@", train$matchup), "HOME", "AWAY")
+train$visitor <- as.factor(train$visitor)
+train <- dplyr::select(train, - matchup)
+
+plotAccuracyByFeature(as.factor(train$visitor), "Visitor")
+```
+
+Dado que el conjunto de test no contiene las etiquetas de la variable clase, no podremos validar nuestro modelo contra el conjunto de test. Aunque si podremos comprobar el *score* que la plataforma *Kaggle* asigna a nuestra predicción. Por lo tanto, particionaremos el conjunto de entrenamiento en dos subconjuntos: uno para el entrenamiento (parcial) del modelo y otro para realizar la validación.
+
+```{r}
+inTrain <- caret::createFolds(y = train$shot_made_flag, k = 2, list = TRUE)
+train.partition <- train[inTrain$Fold1,]
+validation.partition <- train[-inTrain$Fold2,]
+```
+
+Para utilizar repeats ---> usar repeatedcv como method. (cv no funciona con repeat)
+
+```{r}
+control <- caret::trainControl(method = "repeatedcv",repeats = 3, classProbs = TRUE)
+```
+
+
+
+```{r}
+modelXGB <- caret::train(shot_made_flag ~ ., data = train.partition, trControl = control, method = "pls", metric = "logLoss", preProc = c("center"), 
+                         tuneLength = 20)
+modelXGB
+```
+
+```{r}
+validation.partition.test <- dplyr::select(validation.partition, - shot_made_flag)
+prediction <- predict(modelXGB, newData = validation.partition.test, type = "prob")
+```
+
+```{r}
+resamples.result <- resamples(list(xgb = modelXGB, adaboost = modelAdaboost))
+summary(resamples.result)
+
+xyplot(resamples.result, what = "BlandAltman")
+
+diffs <- diff(resamples.result)
+summary(diffs)
+```
+
+
+
 
