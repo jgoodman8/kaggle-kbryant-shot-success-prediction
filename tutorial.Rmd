@@ -22,6 +22,7 @@ El conjunto de test está representado por un subconjunto de 5.000 intancias con 
 ```{r}
 library(caret)
 library(ggplot2)
+library(kernlab)
 
 data <- read.csv("data.csv")
 
@@ -257,7 +258,7 @@ Finalmente, la variable *shot_distance* describe la distancia a la que se ha rea
 plotAccuracyByFeature(as.factor(train$shot_distance), "Shot distance")
 ```
 
-# Preprocesado y entrenamiento
+# Transformación de los datos
 
 En primer lugar, eliminamos las variables que, tal y como se ha comentado en la sección anterior, no aportan información relevante.
 
@@ -267,22 +268,37 @@ train <- dplyr::select(train, - game_id)
 train <- dplyr::select(train, - team_id)
 train <- dplyr::select(train, - team_name)
 train <- dplyr::select(train, - shot_id)
-
-# TODO: Eliminar game_date?
-```
-
-```{r}
-train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
+train <- dplyr::select(train, - game_date)
+train <- dplyr::select(train, - loc_x)
+train <- dplyr::select(train, - loc_y)
+train <- dplyr::select(train, - lat)
 ```
 
 A continuación, utilizamos la variable *matchup* para obtener información más valiosa que el nombre del enfrentamiento. Los enfrentamientos que contienen el símbolo "*@*"" representan enfrentamientos como equipo local. Por consiguiente, los partidos que contienen "*VS*" en el nombre, son partidos jugados como visitante. En función de esto, creamos la variable *visitor* con el fin de clarificar el rol del equipo en el partido. Aún así, no se observa diferencia en la efectividad en relación a jugar un partido como visitante o como local
 
 ```{r}
-train$visitor <- ifelse(grepl("@", train$matchup), "HOME", "AWAY")
+train$visitor <- ifelse(grepl("@", train$matchup), 0, 1)
 train$visitor <- as.factor(train$visitor)
 train <- dplyr::select(train, - matchup)
 
 plotAccuracyByFeature(as.factor(train$visitor), "Visitor")
+```
+
+Existen algunos tipos de métodos analíticos que tienen problemas al tratar variables categóricas. Por lo tanto, se procede a la conversión de dicho tipo de variables a numéricas. Para ello, se asigna a cada categoría un entero, generado de forma incremental en cada característica.
+
+```{r}
+for (i in 1:ncol(train)) {
+    if (is.factor(train[, i])) {
+        levels(train[, i]) <- c(1:length(levels(train[, i])))
+        train[, i] <- as.numeric(train[, i])
+    }
+}
+```
+
+En contraste, al tratarse de una tarea de clasificación, necesitamos que nuesta variable clase sea de tipo categórico. En consecuencia, procedemos a asignar el tipo *SUCCESS* a aquellos tiros acertados y *ERROR* a las canastas fallidas.
+
+```{r}
+train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
 ```
 
 Dado que el conjunto de test no contiene las etiquetas de la variable clase, no podremos validar nuestro modelo contra el conjunto de test. Aunque si podremos comprobar el *score* que la plataforma *Kaggle* asigna a nuestra predicción. Por lo tanto, particionaremos el conjunto de entrenamiento en dos subconjuntos: uno para el entrenamiento (parcial) del modelo y otro para realizar la validación.
@@ -293,27 +309,88 @@ train.partition <- train[inTrain$Fold1,]
 validation.partition <- train[-inTrain$Fold2,]
 ```
 
-Para utilizar repeats ---> usar repeatedcv como method. (cv no funciona con repeat)
+
 
 ```{r}
-control <- caret::trainControl(method = "repeatedcv",repeats = 3, classProbs = TRUE)
+#train.partition.preProcessed <- preProcess(dplyr::select(train.partition, - shot_made_flag), )
+#train.partition.preProcessed <- predict(train.partition.preProcessed, train.partition)
 ```
 
+# Entrenamiento y validación
 
+En primer lugar, utilizamos la función *trainControl* para generar los parámetros que, más tarde, utilizaremos para controlar el entramiento del modelo. De esta forma controlaremos el tipo de estimación del error; en este caso utilizaremos una validación cruzada de 10 hojas o *folds* (por defecto). Dicha validación la repetiremos 3 veces, utilizando el parámetro *repeats = 3* conjuntamente con el parámetro *method = "repeatedcv"*, ya que *method = "cv"* no permite seleccionar repeticiones. Así mismo, nos interesa obtener las probabilidades con las que cada instancia pertenece a cada clase, por lo que utilizamos el parámetro *classProbs = TRUE*.
+
+La evaluación de esta competición se realiza utilizando la métrica *Log Loss*, por lo que será interesante utilizar dicha métrica para seleccionar el modelo óptimo. *Logarithmic loss* mide el rendimiento de un modelo de clasificación en el cual la predicción viene dada por un valor de probabilidad entre 0 y 1. Idealmente, un modelo perfecto prediciría con una *Log Loss* de 0, dado que la métrica se incrementa cuando la probabilidad predicha diverge de la etiqueta real. 
+
+Al no ser una métrica que proporcione por defecto el paquete *caret*, definimos la función *LogLoss* para incluirla por medio del parámetro *summaryFunction*.
 
 ```{r}
-modelXGB <- caret::train(shot_made_flag ~ ., data = train.partition, trControl = control, method = "pls", metric = "logLoss", preProc = c("center"), 
-                         tuneLength = 20)
-modelXGB
+LogLoss <- function(data, lev = NULL, model = NULL) {
+    obs <- data[, "obs"]
+    cls <- levels(obs) # find class names
+    probs <- data[, cls[2]] # use second class name
+    probs <- pmax(pmin(as.numeric(probs), 1 - 1e-15), 1e-15) # bound probability
+    logPreds <- log(probs)
+    log1Preds <- log(1 - probs)
+    real <- (as.numeric(data$obs) - 1)
+    out <- c(mean(real * logPreds + (1 - real) * log1Preds)) * -1
+    names(out) <- c("LogLoss")
+    out
+}
+
+control <- caret::trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = LogLoss, verboseIter = TRUE)
 ```
 
 ```{r}
+fpa.info <- caret::getModelInfo("S")
+fpa.info$fda$parameters
+```
+
+```{r}
+modelGLM <- caret::train(shot_made_flag ~ ., data = train.partition, method = "glm", trControl = control, 
+                         preProc = c("center"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
+plot(modelGLM)
+```
+
+A continuación, entrenaremos el modelo utilizando un análisis discriminante flexible (*Flexible Discriminant Analysis*). Este tipo de modelo de clasificación se basa en una combinación de modelos de regresión linear. Utiliza un *scoring* óptimo para transformar la variable de respuesta de forma que los datos sean más fáciles de separar linealmente. Así mismo, utiliza múltiples *splines*  adaptativos para generar la supercicie discriminante.
+
+```{r}
+fpa.info <- caret::getModelInfo("fda")
+fpa.info$fda$parameters
+```
+
+Tal y como podemos observar, *fda* contiene dos parámetros: *degree* y *nprune*. A continuación, se procede a entrenar el modelo con el conjunto de entrenamiento que creamos en la sección anterior. En primer lugar, empleamos el número por defecto de valores por parámetro utilzando un total de 3^2 combinaciones. Así mismo, a través del argumento *tunelength* asignamos 20 con el fin de obtener una mayor amplia variedad de 20^2 combinaciones.
+
+```{r}
+modelFDA.default <- caret::train(shot_made_flag ~ ., data = train.partition, method = "fda", trControl = control,
+                         preProc = c("center"), metric = "LogLoss", maximize = FALSE)
+
+modelFDA.custom <- caret::train(shot_made_flag ~ ., data = train.partition, method = "fda", trControl = control,
+                         preProc = c("center"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
+
+plot(modelFDA.default)
+plot(modelFDA.custom)
+```
+
+Ahora se procede a realizar la predicción sobre el subconjunto de validación. 
+
+```{r}
+validation.partition.y <- ifelse(validation.partition$shot_made_flag == "SUCCESS", 1, 0)
 validation.partition.test <- dplyr::select(validation.partition, - shot_made_flag)
-prediction <- predict(modelXGB, newData = validation.partition.test, type = "prob")
+
+prediction.xgb <- predict(modelGLM, newData = validation.partition.test, type = "prob")
+score.fda.validation <- MLmetrics::LogLoss(y_pred = prediction.fda$SUCCESS, y_true = validation.partition.y)
+score.fda.validation
+
+prediction.fda <- predict(modelFDA.custom, newData = validation.partition.test, type = "prob")
+score.fda.validation <- MLmetrics::LogLoss(y_pred = prediction.fda$SUCCESS, y_true = validation.partition.y)
+score.fda.validation
 ```
 
+Dado que el ambos modelos (*fda* y *X*) han sido entrenados con las mismas hojas (no se ha modificado la semilla), podemos comparar los resultados de la crossvalidación de ambos modelos.
+
 ```{r}
-resamples.result <- resamples(list(xgb = modelXGB, adaboost = modelAdaboost))
+resamples.result <- resamples(list(glm = modelGLM, fda = modelFDA.custom))
 summary(resamples.result)
 
 xyplot(resamples.result, what = "BlandAltman")
@@ -323,5 +400,28 @@ summary(diffs)
 ```
 
 
+# Generación del modelo final y predicción
 
+```{r}
+model <- caret::train(shot_made_flag ~ ., data = train, method = "glm", trControl = control, 
+                         preProc = c("center"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
+model
+```
 
+```{r}
+test <- dplyr::select(test, - game_event_id)
+test <- dplyr::select(test, - game_id)
+test <- dplyr::select(test, - team_id)
+test <- dplyr::select(test, - team_name)
+test <- dplyr::select(test, - shot_id)
+test <- dplyr::select(test, - game_date)
+test <- dplyr::select(test, - loc_x)
+test <- dplyr::select(test, - loc_y)
+test <- dplyr::select(test, - lat)
+```
+
+```{r}
+prediction <- predict(model, newData = test, type = "prob")
+prediction.table <- data.frame(shot_id = test$shot_id, shot_made_flag = prediction$SUCCESS)
+write.csv(prediction.table, "prediction.csv", row.names = FALSE)
+```
