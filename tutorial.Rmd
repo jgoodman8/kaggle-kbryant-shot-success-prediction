@@ -22,7 +22,10 @@ El conjunto de test está representado por un subconjunto de 5.000 intancias con 
 ```{r}
 library(caret)
 library(ggplot2)
-library(kernlab)
+library(glmnet)
+library(earth)
+
+SEED <- 555
 
 data <- read.csv("data.csv")
 
@@ -56,6 +59,7 @@ train <- data[!is.na(data$shot_made_flag),]
 test <- data[is.na(data$shot_made_flag),]
 
 train$shot_made_flag <- as.factor(train$shot_made_flag)
+train$shot_made_flag <- factor(train$shot_made_flag, levels = c("1", "0"))
 test <- dplyr::select(test, - shot_made_flag)
 
 dim(train)
@@ -68,7 +72,7 @@ Antes de analizar las variables predictoras, observamos la distribución de la va
 ```{r}
 shot_made_flag.misses <- format(round((length(train$shot_made_flag[train$shot_made_flag == 0])/nrow(train)) * 100,  2), nsmall = 2)
 shot_made_flag.swishes <- format(round((length(train$shot_made_flag[train$shot_made_flag == 1])/nrow(train)) * 100,  2), nsmall = 2)
-shot_made_flag.names <- c(paste("Misses - ", shot_made_flag.misses, "%"), paste("Swishes - ", shot_made_flag.swishes, "%"))
+shot_made_flag.names <- c(paste("Swishes - ", shot_made_flag.swishes, "%"), paste("Misses - ", shot_made_flag.misses, "%"))
 
 barplot(table(train$shot_made_flag), names = shot_made_flag.names)
 ```
@@ -287,10 +291,13 @@ plotAccuracyByFeature(as.factor(train$visitor), "Visitor")
 Existen algunos tipos de métodos analíticos que tienen problemas al tratar variables categóricas. Por lo tanto, se procede a la conversión de dicho tipo de variables a numéricas. Para ello, se asigna a cada categoría un entero, generado de forma incremental en cada característica.
 
 ```{r}
-for (i in 1:ncol(train)) {
-    if (is.factor(train[, i])) {
-        levels(train[, i]) <- c(1:length(levels(train[, i])))
-        train[, i] <- as.numeric(train[, i])
+categorical.features <- c("action_type", "combined_shot_type", "season", "shot_type", "shot_zone_area", "shot_zone_basic", 
+                          "shot_zone_range", "opponent", "visitor")
+
+for (feature in categorical.features) {
+    if (is.factor(train[, feature])) {
+        levels(train[, feature]) <- c(1:length(levels(train[, feature])))
+        train[, feature] <- as.numeric(train[, feature])
     }
 }
 ```
@@ -298,22 +305,21 @@ for (i in 1:ncol(train)) {
 En contraste, al tratarse de una tarea de clasificación, necesitamos que nuesta variable clase sea de tipo categórico. En consecuencia, procedemos a asignar el tipo *SUCCESS* a aquellos tiros acertados y *ERROR* a las canastas fallidas.
 
 ```{r}
-train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
+# train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
+
+train$shot_made_flag <- as.factor(train$shot_made_flag)
+train$shot_made_flag <- factor(train$shot_made_flag, levels = c("1", "0"))
 ```
 
-Dado que el conjunto de test no contiene las etiquetas de la variable clase, no podremos validar nuestro modelo contra el conjunto de test. Aunque si podremos comprobar el *score* que la plataforma *Kaggle* asigna a nuestra predicción. Por lo tanto, particionaremos el conjunto de entrenamiento en dos subconjuntos: uno para el entrenamiento (parcial) del modelo y otro para realizar la validación.
+Dado que el conjunto de test no contiene las etiquetas de la variable clase, no podremos validar nuestro modelo contra el conjunto de test. Aunque si podremos comprobar el *score* que la plataforma *Kaggle* asigna a nuestra predicción. Por lo tanto, particionaremos el conjunto de entrenamiento en dos subconjuntos: uno para el entrenamiento (parcial) del modelo y otro para realizar la validación. 
+
+Para realizar tal partición, se puede valorar el uso de la función *createFolds* con *k = 2*, obteniendo dos subconjuntos balanceados pero de dimensiones casi identicas. Por otra parte, la función *createResample* crea las particiones utilizando *bootstraping*, con lo que podríamos tener instancias presentes en ambos subconjuntos. Nos interesa crear dos subconjuntos balanceados y de unas proporciones de 70% para el subconjunto de entrenamiento y 30% para el de test, con respecto al conjunto original. Para ello, utilizamos *createDataPartition* con el parámetro *p = .7*.
 
 ```{r}
-inTrain <- caret::createFolds(y = train$shot_made_flag, k = 2, list = TRUE)
-train.partition <- train[inTrain$Fold1,]
-validation.partition <- train[-inTrain$Fold2,]
-```
-
-
-
-```{r}
-#train.partition.preProcessed <- preProcess(dplyr::select(train.partition, - shot_made_flag), )
-#train.partition.preProcessed <- predict(train.partition.preProcessed, train.partition)
+set.seed(SEED)
+inTrain <- caret::createDataPartition(y = train$shot_made_flag, p = .7, list = FALSE)
+subset.train <- train[inTrain,]
+subset.test <- train[-inTrain,]
 ```
 
 # Entrenamiento y validación
@@ -338,19 +344,34 @@ LogLoss <- function(data, lev = NULL, model = NULL) {
     out
 }
 
+set.seed(SEED)
 control <- caret::trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = LogLoss, verboseIter = TRUE)
 ```
 
-```{r}
-fpa.info <- caret::getModelInfo("S")
-fpa.info$fda$parameters
-```
+## glmnet
+
+Uno de los métodos elegidos para general nuestro modelo de clasificación es *glmnet* (*Lasso and Elastic-Net Regularized Generalized Linear Models*). Este algoritmo utiliza descenso cíclico coordinado, el cual optimiza sucesivamente la función objetivo sobre cada parémetro con otros fijos, hasta llegar a coverger. Utiliza los parámetros *alpha* y *lambda*. El primero es el modifica el valor de mezcla de la regulzación *elastic net*, variando entre 1 (lasso) y 0 (ridge). El segundo parámetro *lambda* se calcula en función de del valor de *alpha* y el número de valores de la secuencia (por defecto 100).
 
 ```{r}
-modelGLM <- caret::train(shot_made_flag ~ ., data = train.partition, method = "glm", trControl = control, 
-                         preProc = c("center"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
-plot(modelGLM)
+glmnet.info <- caret::getModelInfo("glmnet")
+glmnet.info$fda$parameters
 ```
+
+A continuación, en el modelo *modelGLM.default* realizamos un entrenamiento utilizando 3^2 combinaciones de dichos parámetros. En el modelo *modelGLM.custom* amplicamos el parámetro *tuneLength = 20*, por lo que combinaremos 20 valores de cada uno de los parámetros, obteniedo un total de 20^2 combinaciones.
+
+```{r}
+modelGLM.default <- caret::train(shot_made_flag ~ ., data = subset.train, method = "glmnet", trControl = control,
+                         preProcess = c("center", "scale"), metric = "LogLoss", maximize = FALSE)
+
+modelGLM.custom <- caret::train(shot_made_flag ~ ., data = subset.train, method = "glmnet", trControl = control,
+                         preProcess = c("center", "scale", "pca"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
+
+
+plot(modelGLM.default)
+plot(modelGLM.custom)
+```
+
+## fda
 
 A continuación, entrenaremos el modelo utilizando un análisis discriminante flexible (*Flexible Discriminant Analysis*). Este tipo de modelo de clasificación se basa en una combinación de modelos de regresión linear. Utiliza un *scoring* óptimo para transformar la variable de respuesta de forma que los datos sean más fáciles de separar linealmente. Así mismo, utiliza múltiples *splines*  adaptativos para generar la supercicie discriminante.
 
@@ -362,38 +383,48 @@ fpa.info$fda$parameters
 Tal y como podemos observar, *fda* contiene dos parámetros: *degree* y *nprune*. A continuación, se procede a entrenar el modelo con el conjunto de entrenamiento que creamos en la sección anterior. En primer lugar, empleamos el número por defecto de valores por parámetro utilzando un total de 3^2 combinaciones. Así mismo, a través del argumento *tunelength* asignamos 20 con el fin de obtener una mayor amplia variedad de 20^2 combinaciones.
 
 ```{r}
-modelFDA.default <- caret::train(shot_made_flag ~ ., data = train.partition, method = "fda", trControl = control,
-                         preProc = c("center"), metric = "LogLoss", maximize = FALSE)
+modelFDA.default <- caret::train(shot_made_flag ~ ., data = subset.train, method = "fda", trControl = control,
+                         preProcess = c("center", "scale"), metric = "LogLoss", maximize = FALSE)
 
-modelFDA.custom <- caret::train(shot_made_flag ~ ., data = train.partition, method = "fda", trControl = control,
-                         preProc = c("center"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
+modelFDA.custom <- caret::train(shot_made_flag ~ ., data = subset.train, method = "fda", trControl = control,
+                         preProcess = c("center", "scale"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
 
 plot(modelFDA.default)
 plot(modelFDA.custom)
 ```
 
+## Validación
+
 Ahora se procede a realizar la predicción sobre el subconjunto de validación. 
 
 ```{r}
-validation.partition.y <- ifelse(validation.partition$shot_made_flag == "SUCCESS", 1, 0)
-validation.partition.test <- dplyr::select(validation.partition, - shot_made_flag)
+validation.partition.y <- ifelse(subset.test$shot_made_flag == "SUCCESS", 1, 0)
+validation.partition.test <- dplyr::select(subset.test, - shot_made_flag)
 
-prediction.xgb <- predict(modelGLM, newData = validation.partition.test, type = "prob")
-score.fda.validation <- MLmetrics::LogLoss(y_pred = prediction.fda$SUCCESS, y_true = validation.partition.y)
-score.fda.validation
+prediction.glm.default <- predict(modelGLM.default, newdata = validation.partition.test, type = "prob")
+score.glm.default.validation <- MLmetrics::LogLoss(y_pred = prediction.glm.default$SUCCESS, y_true = validation.partition.y)
+score.glm.default.validation
 
-prediction.fda <- predict(modelFDA.custom, newData = validation.partition.test, type = "prob")
-score.fda.validation <- MLmetrics::LogLoss(y_pred = prediction.fda$SUCCESS, y_true = validation.partition.y)
-score.fda.validation
+prediction.glm.custom <- predict(modelGLM.custom, newdata = validation.partition.test, type = "prob")
+score.glm.custom.validation <- MLmetrics::LogLoss(y_pred = prediction.glm.custom$SUCCESS, y_true = validation.partition.y)
+score.glm.custom.validation
+
+prediction.fda.default <- predict(modelFDA.default, newdata = validation.partition.test, type = "prob")
+score.fda.default.validation <- MLmetrics::LogLoss(y_pred = prediction.fda.default$SUCCESS, y_true = validation.partition.y)
+score.fda.default.validation
+
+prediction.fda.custom <- predict(modelFDA.custom, newdata = validation.partition.test, type = "prob")
+score.fda.custom.validation <- MLmetrics::LogLoss(y_pred = prediction.fda.custom$SUCCESS, y_true = validation.partition.y)
+score.fda.custom.validation
 ```
 
-Dado que el ambos modelos (*fda* y *X*) han sido entrenados con las mismas hojas (no se ha modificado la semilla), podemos comparar los resultados de la crossvalidación de ambos modelos.
+Dado que el ambos modelos (*fda* y *glmnet*) han sido entrenados con las mismas hojas (no se ha modificado la semilla), podemos comparar los resultados de la crossvalidación de ambos modelos.
 
 ```{r}
-resamples.result <- resamples(list(glm = modelGLM, fda = modelFDA.custom))
+resamples.result <- caret::resamples(list(glm = modelGLM, fda = modelFDA.custom))
 summary(resamples.result)
 
-xyplot(resamples.result, what = "BlandAltman")
+lattice::xyplot(resamples.result, what = "BlandAltman")
 
 diffs <- diff(resamples.result)
 summary(diffs)
@@ -402,13 +433,19 @@ summary(diffs)
 
 # Generación del modelo final y predicción
 
-```{r}
-model <- caret::train(shot_made_flag ~ ., data = train, method = "glm", trControl = control, 
-                         preProc = c("center"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
-model
-```
+Ahora procedemos a realizar el entrenamiento del modelo utilizando todas las instancias que conforman el conjunto de entrenamiento que nos proporciona *Kaggle*. Para ello, utilizamos el método que mejores valores ha obtenido en la validación cruzada: *fda* con *tuneLength = 20*.
 
 ```{r}
+model <- caret::train(shot_made_flag ~ ., data = train, method = "fda", trControl = control, 
+                         preProcess = c("center", "scale", "pca"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
+plot(model)
+```
+
+Antes de generar una clasificación sobre el conjunto de test, necesitamos eliminar y transformar las variables tal y como lo hicimos en el conjunto de entrenamiento. El modelo ha sido entrenado para "comprender" unas determinadas variables de tereminados tipos, por lo que es necesario aplicar las mismas operaciones.
+
+```{r}
+shot_id <- test$shot_id
+
 test <- dplyr::select(test, - game_event_id)
 test <- dplyr::select(test, - game_id)
 test <- dplyr::select(test, - team_id)
@@ -418,10 +455,23 @@ test <- dplyr::select(test, - game_date)
 test <- dplyr::select(test, - loc_x)
 test <- dplyr::select(test, - loc_y)
 test <- dplyr::select(test, - lat)
+
+test$visitor <- ifelse(grepl("@", test$matchup), 0, 1)
+test$visitor <- as.factor(test$visitor)
+test <- dplyr::select(test, - matchup)
+
+for (i in 1:ncol(test)) {
+    if (is.factor(test[, i])) {
+        levels(test[, i]) <- c(1:length(levels(test[, i])))
+        test[, i] <- as.numeric(test[, i])
+    }
+}
 ```
 
+Finalmente, generamos la clasificación sobre el conjunto de test que nos ha proporcionado *Kaggle*. 
+
 ```{r}
-prediction <- predict(model, newData = test, type = "prob")
-prediction.table <- data.frame(shot_id = test$shot_id, shot_made_flag = prediction$SUCCESS)
+prediction <- predict(model, newdata = test, type = "prob")
+prediction.table <- data.frame(shot_id = shot_id, shot_made_flag = prediction$ERROR)
 write.csv(prediction.table, "prediction.csv", row.names = FALSE)
 ```
