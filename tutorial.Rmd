@@ -13,11 +13,11 @@ knitr::opts_knit$set(root.dir = "C:/Users/cento/Documents/MasterUIMP/Practicas/s
 
 # Introducción
 
-En este documento se tratará el problema presentado la competición de [Kaggle](https://www.kaggle.com/) bajo el título [Kobe Bryant Shot Selection](https://www.kaggle.com/c/kobe-bryant-shot-selection). El objetivo de esta competición es la de realizar una clasificación de tiros encestados y fallados por Kobe Bryant.
+En este documento se tratará el problema presentado en la plataforma [Kaggle](https://www.kaggle.com/) bajo el título [Kobe Bryant Shot Selection](https://www.kaggle.com/c/kobe-bryant-shot-selection). El objetivo de esta competición es la de realizar una clasificación de tiros encestados y fallados por el ex-jugador de baloncesto, Kobe Bryant.
 
 La competición proporciona un dataset con 30.697 instancias y 25 variables, incluída la variable clase. Esta variable clase está definida de forma binaria, tomando valor 1 en caso de tratarse de un tiro acertado y 0 en caso de un tiro fallido.
 
-El conjunto de test está representado por un subconjunto de 5.000 intancias con ausencia de la etiqueta de clase. Para estas instancias, se deberá de predecir la probabilidad que cada tiro se enceste. El *score* utilizado por *Kaggle* en esta competición es la pérdida logarítica o *log loss*.
+El conjunto de test está representado por un subconjunto de 5.000 intancias con ausencia de la etiqueta de clase. Para estas instancias, se deberá de predecir la probabilidad que cada tiro se enceste. El *score* utilizado por *Kaggle* en esta competición es la pérdida logarítmica o *log loss* (*Logarithmic loss*).
 
 ```{r}
 library(caret)
@@ -34,7 +34,7 @@ dim(data)
 
 # Análisis de la variables
 
-En esta sección, se realizará una describición y análisis de cada una de las variables predictoras del dataset y la variable clase. A continuación, se muestra el listado de variables con algunas de sus características internas.
+En esta sección, se realizará una breve descripción y análisis de cada una de las variables predictoras del dataset y la variable clase. A continuación, se muestra el listado de variables con algunas de sus características internas.
 
 ```{r}
 str(data)
@@ -42,17 +42,17 @@ str(data)
 
 ## Variable clase: *shot_made_flag*
 
-Tal y como se ha comentado, existen 5.000 instancias sin los valores de la variable clase. Estas serán las instancias para las que debamos realizar nuestra predicción.
+Tal y como se ha comentado, existen 5.000 instancias que carecen de valores para la variable clase, o etiqueta. Estas son las instancias para las que debemos realizar nuestra clasificación.
 
 ```{r}
 print("Número de instancias totales con valores perdidos")
 sum(is.na(data$shot_made_flag))
 
-print("Número de instancias totales con valores perdidos, no teniendo en cuenta 'shot_made_flag'")
+print("Instancias totales con valores perdidos, no teniendo en cuenta 'shot_made_flag'")
 sum(is.na(dplyr::select(data, - shot_made_flag)))
 ```
 
-Por consiguiente, realizaremos una separación de ambos subconjuntos y los denominaremos conjuntos de entrenamiento o *train* y de prueba o *test*. Es obvio que el conjunto de test contedrá las 5.000 instancias con ausencia de etiqueta para *shot_made_flag*. Por otra parte, el conjunto de entrenamiento ahora constará de un total de 25.697 instancias.
+Por consiguiente, realizaremos una separación de ambos subconjuntos y los denominaremos conjuntos de entrenamiento o *train* y de prueba o *test*. Es obvio que el conjunto de test contedrá las 5.000 instancias con ausencia de etiqueta para la variable clase *shot_made_flag*. Por otra parte, el conjunto de entrenamiento ahora constará de un total de 25.697 instancias.
 
 ```{r}
 train <- data[!is.na(data$shot_made_flag),]
@@ -67,11 +67,11 @@ dim(train)
 dim(test)
 ```
 
-Antes de analizar las variables predictoras, observamos la distribución de la variables clase y advertimos que las categorías están bastante parejas, al menos en el conjunto de entrenamiento. De esta forma, un 55,39% de los tiros han sido fallidos y el restante 44,62% consta de tiros encestados, tal y como muestra la gráfica.
+Antes de analizar las variables predictoras, observamos la distribución de la variables clase y advertimos que las categorías están bastante parejas (al menos en el conjunto de entrenamiento). De esta forma, calculamos que un 55,39% de los tiros han sido fallidos y el restante 44,62% son tiros encestados, tal y como muestra la gráfica.
 
 ```{r}
-shot_made_flag.misses <- format(round((length(train$shot_made_flag[train$shot_made_flag == 0])/nrow(train)) * 100,  2), nsmall = 2)
-shot_made_flag.swishes <- format(round((length(train$shot_made_flag[train$shot_made_flag == 1])/nrow(train)) * 100,  2), nsmall = 2)
+shot_made_flag.misses <- format(round((length(train$shot_made_flag[train$shot_made_flag == 0]) / nrow(train)) * 100, 2), nsmall = 2)
+shot_made_flag.swishes <- format(round((length(train$shot_made_flag[train$shot_made_flag == 1]) / nrow(train)) * 100, 2), nsmall = 2)
 shot_made_flag.names <- c(paste("Swishes - ", shot_made_flag.swishes, "%"), paste("Misses - ", shot_made_flag.misses, "%"))
 
 barplot(table(train$shot_made_flag), names = shot_made_flag.names)
@@ -85,11 +85,11 @@ La variable *action_type* referencia el tipo de acción mediante el que se realiz
 levels(data$action_type)
 ```
 
-A continuación, se muestra la relación entre la preción en el tiro según el tipo de acción realizada. Dado que la variable *action_type* contiene multitud de categorías, se han seleccionado aquellas que representan más de 20 lanzamientos. Las restantes se han juntado en una nueva categoría, bajo el nombre de *Others*.
+Puede resultar interesante mostrar la relación entre la precisión en el tiro y el tipo de acción realizada. Dado que la variable *action_type* contiene multitud de categorías, se han seleccionado aquellas que están asociadas a más de 20 lanzamientos. Las restantes se han juntado en una nueva categoría, bajo el nombre de *Others*.
 
 ```{r}
 action_type <- train$action_type
-action_type.is.frequent <- sapply(levels(action_type), function(level){ length(action_type[action_type == level]) > 20 })
+action_type.is.frequent <- sapply(levels(action_type), function(level) { length(action_type[action_type == level]) > 20 })
 action_type.frequent.levels <- subset(levels(action_type), action_type.is.frequent)
 
 action_type <- as.character(action_type)
@@ -102,24 +102,23 @@ A continuación, se define una función para mostrar la proporción de aciertos y e
 ```{r}
 plotOrderedAccuracyByFeature <- function(feature) {
 
-  temp <- prop.table(table(feature, train$shot_made_flag), 1)
-  temp <- as.data.frame.matrix(temp)
-  temp$shot <- rownames(temp)
-  
-  ggplot(temp, aes(x = reorder(shot, `1`), y = 1)) +
-    geom_point(aes(y = `1`), size = 2, stat = "identity") + 
-    coord_flip() + 
+    temp <- prop.table(table(feature, train$shot_made_flag), 1)
+    temp <- as.data.frame.matrix(temp)
+    temp$shot <- rownames(temp)
+
+    ggplot(temp, aes(x = reorder(shot, `1`), y = 1)) +
+    geom_point(aes(y = `1`), size = 2, stat = "identity") +
+    coord_flip() +
     xlab("") +
     ylab("Accuracy")
 }
 ```
 
-Se aprecia como, efectivamente, existe una clara diferencia de probabilidad de acierto según el tipo de acción. Los tipos con mayor *accuracy* son *Slam Dunk Shot*, *Driving Slam Dunk Shot* y *Driving Dunk Shot*, mientras que *Jump Shot*, *Tip Shot*, *Hook Shot* y *Layup Shot* son las acciones con menor probabilidad de acierto.
+Se aprecia como, efectivamente, existe una clara diferencia de efectividad según el tipo de acción. Los tipos con mayor *accuracy* son *Slam Dunk Shot*, *Driving Slam Dunk Shot* y *Driving Dunk Shot*, mientras que *Jump Shot*, *Tip Shot*, *Hook Shot* y *Layup Shot* son las acciones con menor probabilidad de acierto.
 
 ```{r}
 plotOrderedAccuracyByFeature(action_type)
 ```
-
 
 Otra variable que describe el tipo de tiro realizado es *combined_shot_type*. Es de tipo categórica y comprende los siguientes tipos:
 
@@ -127,7 +126,7 @@ Otra variable que describe el tipo de tiro realizado es *combined_shot_type*. Es
 levels(train$combined_shot_type)
 ```
 
-De la misma forma que se hizo con la variable *action_type*, realizaremos una comparativa entre los tipos de tiros y sus respectivas probabilidades de acierto. De igual manera, existen claras relaciones en dicha comparativa. Observamos una alta probabilidad asociada a mates (*dunks*) y tiros libres (*Bank Shots*).
+De la misma forma que se hizo con la variable *action_type*, realizaremos una comparativa entre los tipos de tiros y sus respectivas probabilidades de acierto. De igual manera, existen claras relaciones en dicha comparativa. Observamos una mayor efectividad asociada a mates (*dunks*) y tiros libres (*Bank Shots*).
 
 ```{r}
 plotOrderedAccuracyByFeature(train$combined_shot_type)
@@ -139,16 +138,17 @@ Finalmente, la variable *shot_type* también nos aporta valiosa información sobre
 levels(data$shot_type)
 ```
 
-A continuación, se representa su relación con la precisión en los tiros realizados. Para ello, se define una función, que de forma muy similar a la anterior, nos muestra la la proporción de aciertos y errores (en los tiros realizados), en función de una característica dada.
+Puede ser relevante representar su relación con la precisión en los tiros realizados. Para ello, se define una función, que de forma muy similar a la anterior, nos muestra la proporción de aciertos y errores (en los tiros realizados), en función de una característica dada.
 
 ```{r}
 plotAccuracyByFeature <- function(feature, feature.name, x.angle = 0) {
-  ggplot(data = train, aes(x = feature)) +  
-    geom_bar(aes(fill = shot_made_flag), stat = "count", position = "fill") + 
-    xlab(feature.name) + 
-    ylab("Accuracy") + 
-    theme(axis.text.x = element_text(angle = x.angle, hjust = ifelse(x.angle == 0, .5, 1))) + 
-    guides(fill = guide_legend(title = "Shot swished"))
+    title <- "Shot swished"
+    ggplot(data = train, aes(x = feature)) +
+    geom_bar(aes(fill = shot_made_flag), stat = "count", position = "fill") +
+    xlab(feature.name) +
+    ylab("Accuracy") +
+    theme(axis.text.x = element_text(angle = x.angle, hjust = ifelse(x.angle == 0, .5, 1))) +
+    guides(fill = guide_legend(title = title))
 }
 ```
 
@@ -158,7 +158,7 @@ plotAccuracyByFeature(train$shot_type, "Shot type")
 
 ## Identificadores genéricos
 
-Las propiedades *game_id* y *game_event_id* representan los idenficadores de partido y de evento en cada partido, respectivamente. En princio, no aportan información más allá de ayudarnos a estudiar las acciones agrupadas por partido. 
+Las propiedades *game_id* y *game_event_id* representan los idenficadores de partido y de evento en cada partido, respectivamente. En princio, no aportan información más allá de podrían ayudarnos a estudiar las acciones agrupadas por partido. 
 
 En cuanto a las variables *team_id* y *team_name*, carencen completamente de interés. Estas recogen, respectivamente, el idenficador de equipo y su nombre. Dado que el dataset contiene datos sobre los tiros realizados en un único equipo, estas características no aportan información útil.
 
@@ -170,7 +170,7 @@ levels(data$team_name)
 
 ## Variables referentes al partido
 
-La variable *matchup* incluye la información de los equipos que han participado en el partido. Sin embargo, sabemos que el dataset recoge los datos de los tiros realizados por K. Bryant en Los Angeles Lakers y la variable *opponent* contiene el nombre del equipo advesario. La información útil que podemos extraer de *matchup* es saber si una determinada acción se ha realizado como local o visitante.
+La variable *matchup* incluye la información de los equipos que han participado en el partido. Sin embargo, sabemos que el dataset recoge los datos de los tiros realizados por K. Bryant en Los Angeles Lakers y la variable *opponent* contiene el nombre del equipo advesario. La información útil que podemos extraer de *matchup*, es saber si una determinada acción se ha realizado como local o visitante.
 
 ```{r}
 print("Oponentes")
@@ -180,7 +180,7 @@ print("Enfrentamientos")
 levels(data$matchup)
 ```
 
-Así mismo, las variables *season* y *period* referencian la temporada en la que se produjo el tiro y el periodo dentro del partido, respectivamente.
+Así mismo, las variables *season* y *period* referencian la temporada en la que se produjo el tiro y el periodo dentro del partido, respectivamente. Estudiammos sus relaciones con la efectividad en el tiro.
 
 ```{r}
 print("Temporadas")
@@ -198,7 +198,7 @@ plotAccuracyByFeature(train$season, "Season", 60)
 plotAccuracyByFeature(as.factor(train$period), "Period")
 ```
 
-Otra variable interesante podría ser *playoffs*, ya que nos informa si un partido dado es de play-off (representado con un 1) o no (0).
+Otra variable interesante podría ser *playoffs*, ya que nos informa si un partido dado es de play-off (representado con un 1) o no (0). Sin embargo, esta relación tampoco arroja demasiada claridad.
 
 ```{r}
 unique(data$playoffs)
@@ -208,18 +208,18 @@ unique(data$playoffs)
 plotAccuracyByFeature(as.factor(train$playoffs), "Play-off")
 ```
 
-Así mismo, puede ser relevante estudiar las variables *minutes_remaining* y *seconds_remaining*. Estas propiedades expresa los segundos y minutos restantes en el momento del lanzamiento. Al visualizarlos, no se aprecia que estas características tengan un impacto claro en la probabilidad de acierto/fallo. Se ha podido apreciar que lo mismo ocurre con las otras variables incluídas en esta categoría.
+Así mismo, puede ser insteresante estudiar las variables *minutes_remaining* y *seconds_remaining*. Estas propiedades expresan los segundos y minutos restantes en el momento del lanzamiento, respectivamente. Al visualizarlos, tampoco se aprecia que estas características tengan un impacto claro en la probabilidad de acierto/fallo. Se ha podido apreciar que lo mismo ocurre con las otras variables incluídas en esta categoría.
 
 ```{r}
 plotAccuracyByFeature(as.factor(train$minutes_remaining), "Minutes remaing")
 plotAccuracyByFeature(as.factor(train$seconds_remaining), "Seconds remaining", 90)
 ```
 
-Finalmente, la variable *game_date* representa la fecha en la que se ha producido cada enfrentamiento y, por lo tanto, cada tiro. Así mismo, las variables *lat* y *lon* representan la latitud y logitud en la que se realizaron los tiros.
+Finalmente, la variable *game_date* representa la fecha en la que se ha producido cada enfrentamiento y, por lo tanto, cada tiro. Así mismo, las variables *lat* y *lon* representan la latitud y logitud en las que se realizaron los tiros.
 
 ## Variables referentes a la cancha
 
-En primer lugar, prestamos atención a las variables *loc_x* y *loc_y*. Conjuntamente representan las posición de la cancha de baloncesto en la que se realizó cada lanzamiento. Observamos como, a simple vista, no existe ninguna zona de la cancha con una mayor concentración de canastas o errores.
+En primer lugar, prestamos atención a las variables *loc_x* y *loc_y*. Conjuntamente, representan la posición de la cancha de baloncesto en la que se realizó cada lanzamiento. Observamos como, a simple vista, no existe ninguna zona de la cancha con una mayor concentración de canastas o errores.
 
 ```{r}
 ggplot(train, aes(x = loc_x, y = loc_y)) +
@@ -229,7 +229,7 @@ ggplot(train, aes(x = loc_x, y = loc_y)) +
     facet_grid(~shot_made_flag)
 ```
 
-La variables *shot_zone_area*, *shot_zone_basic* y *shot_zone_range* representan la cancha dividada por zonas y expresan la zona en la que se produjo la acción. En primer lugar, mostramos las parcelas de la cancha:
+Las variables *shot_zone_area*, *shot_zone_basic* y *shot_zone_range* representan la cancha dividada por zonas y expresan la zona en la que se produjo la acción. En primer lugar, mostramos las parcelas o divisiones de la cancha según cada variable:
 
 ```{r}
 ggplot(train, aes(x = loc_x, y = loc_y)) +
@@ -264,7 +264,7 @@ plotAccuracyByFeature(as.factor(train$shot_distance), "Shot distance")
 
 # Transformación de los datos
 
-En primer lugar, eliminamos las variables que, tal y como se ha comentado en la sección anterior, no aportan información relevante.
+Teniendo en cuanta el análisis que características que se ha realizado, se procede a eliminar las variables que, tal y como se ha comentado en la sección anterior, no aportan información relevante.
 
 ```{r}
 train <- dplyr::select(train, - game_event_id)
@@ -273,12 +273,11 @@ train <- dplyr::select(train, - team_id)
 train <- dplyr::select(train, - team_name)
 train <- dplyr::select(train, - shot_id)
 train <- dplyr::select(train, - game_date)
-train <- dplyr::select(train, - loc_x)
-train <- dplyr::select(train, - loc_y)
 train <- dplyr::select(train, - lat)
+train <- dplyr::select(train, - lon)
 ```
 
-A continuación, utilizamos la variable *matchup* para obtener información más valiosa que el nombre del enfrentamiento. Los enfrentamientos que contienen el símbolo "*@*"" representan enfrentamientos como equipo local. Por consiguiente, los partidos que contienen "*VS*" en el nombre, son partidos jugados como visitante. En función de esto, creamos la variable *visitor* con el fin de clarificar el rol del equipo en el partido. Aún así, no se observa diferencia en la efectividad en relación a jugar un partido como visitante o como local
+A continuación, utilizamos la variable *matchup* para obtener información algo más valiosa que el nombre del enfrentamiento. Los enfrentamientos que contienen el símbolo "*@*"" representan enfrentamientos como equipo local. Por consiguiente, los partidos que contienen "*VS*" en el nombre, son partidos jugados como visitante. Ergo, creamos la variable *visitor* con el fin de clarificar el rol del equipo en el partido. Aún así, no se observa cambio en la efectividad en función de jugar un partido como visitante o como local
 
 ```{r}
 train$visitor <- ifelse(grepl("@", train$matchup), 0, 1)
@@ -291,7 +290,7 @@ plotAccuracyByFeature(as.factor(train$visitor), "Visitor")
 Existen algunos tipos de métodos analíticos que tienen problemas al tratar variables categóricas. Por lo tanto, se procede a la conversión de dicho tipo de variables a numéricas. Para ello, se asigna a cada categoría un entero, generado de forma incremental en cada característica.
 
 ```{r}
-categorical.features <- c("action_type", "combined_shot_type", "season", "shot_type", "shot_zone_area", "shot_zone_basic", 
+categorical.features <- c("action_type", "combined_shot_type", "season", "shot_type", "shot_zone_area", "shot_zone_basic",
                           "shot_zone_range", "opponent", "visitor")
 
 for (feature in categorical.features) {
@@ -302,18 +301,16 @@ for (feature in categorical.features) {
 }
 ```
 
-En contraste, al tratarse de una tarea de clasificación, necesitamos que nuesta variable clase sea de tipo categórico. En consecuencia, procedemos a asignar el tipo *SUCCESS* a aquellos tiros acertados y *ERROR* a las canastas fallidas.
+Sin embargo, al tratarse de una tarea de clasificación, necesitamos que nuesta variable clase sea de tipo categórico. Asi ques procedemos a asignar el tipo *SUCCESS* a aquellos tiros acertados (1) y *ERROR* a las canastas fallidas (0).
 
 ```{r}
-# train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
-
-train$shot_made_flag <- as.factor(train$shot_made_flag)
-train$shot_made_flag <- factor(train$shot_made_flag, levels = c("1", "0"))
+train$shot_made_flag <- as.factor(ifelse(train$shot_made_flag == 1, "SUCCESS", "ERROR"))
+train$shot_made_flag <- factor(train$shot_made_flag, levels = c("SUCCESS", "ERROR"))
 ```
 
-Dado que el conjunto de test no contiene las etiquetas de la variable clase, no podremos validar nuestro modelo contra el conjunto de test. Aunque si podremos comprobar el *score* que la plataforma *Kaggle* asigna a nuestra predicción. Por lo tanto, particionaremos el conjunto de entrenamiento en dos subconjuntos: uno para el entrenamiento (parcial) del modelo y otro para realizar la validación. 
+Dado que el conjunto de test no contiene las etiquetas de la variable clase, no podremos validar nuestro modelo contra el conjunto de test. Aunque sí podremos comprobar el *score* que la plataforma *Kaggle* asigne a nuestra predicción. Por lo tanto, particionaremos el conjunto de entrenamiento en dos subconjuntos: uno para un entrenamiento parcial del modelo y otro para realizar la validación de tal modelo. 
 
-Para realizar tal partición, se puede valorar el uso de la función *createFolds* con *k = 2*, obteniendo dos subconjuntos balanceados pero de dimensiones casi identicas. Por otra parte, la función *createResample* crea las particiones utilizando *bootstraping*, con lo que podríamos tener instancias presentes en ambos subconjuntos. Nos interesa crear dos subconjuntos balanceados y de unas proporciones de 70% para el subconjunto de entrenamiento y 30% para el de test, con respecto al conjunto original. Para ello, utilizamos *createDataPartition* con el parámetro *p = .7*.
+Para realizar tal partición, se podía valorar el uso de la función *createFolds* con *k = 2*, pero se obtendrían dos subconjuntos balanceados aunque de dimensiones casi identicas. Por otra parte, la función *createResample* crea las particiones utilizando *bootstraping*, con lo que podríamos tener instancias presentes en ambos subconjuntos. Nos interesa crear dos subconjuntos balanceados y de unas proporciones de 70% para el subconjunto de entrenamiento y 30% para el de test (con respecto al conjunto original). Para ello, utilizamos la función *createDataPartition* con el parámetro *p = .7*.
 
 ```{r}
 set.seed(SEED)
@@ -324,9 +321,9 @@ subset.test <- train[-inTrain,]
 
 # Entrenamiento y validación
 
-En primer lugar, utilizamos la función *trainControl* para generar los parámetros que, más tarde, utilizaremos para controlar el entramiento del modelo. De esta forma controlaremos el tipo de estimación del error; en este caso utilizaremos una validación cruzada de 10 hojas o *folds* (por defecto). Dicha validación la repetiremos 3 veces, utilizando el parámetro *repeats = 3* conjuntamente con el parámetro *method = "repeatedcv"*, ya que *method = "cv"* no permite seleccionar repeticiones. Así mismo, nos interesa obtener las probabilidades con las que cada instancia pertenece a cada clase, por lo que utilizamos el parámetro *classProbs = TRUE*.
+En primer lugar, utilizamos la función *trainControl* para generar los parámetros que, más tarde, utilizaremos para controlar el entramiento del modelo. De esta forma controlaremos el tipo de estimación del error. En este caso, utilizaremos una validación cruzada de 10 hojas o *folds* (por defecto). Dicha validación la repetiremos 3 veces, utilizando el parámetro *repeats = 3* conjuntamente con el parámetro *method = "repeatedcv"* (ya que si empleasemos *method = "cv"* no podríamos seleccionar repeticiones). Así mismo, nos interesa obtener las probabilidades con las que cada instancia pertenece a cada clase, para ello utilizamos el parámetro *classProbs = TRUE*.
 
-La evaluación de esta competición se realiza utilizando la métrica *Log Loss*, por lo que será interesante utilizar dicha métrica para seleccionar el modelo óptimo. *Logarithmic loss* mide el rendimiento de un modelo de clasificación en el cual la predicción viene dada por un valor de probabilidad entre 0 y 1. Idealmente, un modelo perfecto prediciría con una *Log Loss* de 0, dado que la métrica se incrementa cuando la probabilidad predicha diverge de la etiqueta real. 
+La evaluación de esta competición se realiza utilizando la métrica *Log Loss*, por lo que será interesante utilizar dicha métrica para seleccionar el modelo óptimo. *Logarithmic loss* mide el rendimiento de un modelo de clasificación, en el cual la predicción viene dada por un valor de probabilidad entre 0 y 1. Idealmente, un modelo perfecto prediciría con una *Log Loss* de 0, dado que la métrica se incrementa cuando la probabilidad predicha diverge de la etiqueta real.
 
 Al no ser una métrica que proporcione por defecto el paquete *caret*, definimos la función *LogLoss* para incluirla por medio del parámetro *summaryFunction*.
 
@@ -345,23 +342,25 @@ LogLoss <- function(data, lev = NULL, model = NULL) {
 }
 
 set.seed(SEED)
-control <- caret::trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = LogLoss, verboseIter = TRUE)
+control <- caret::trainControl(method = "repeatedcv", repeats = 3, classProbs = TRUE, summaryFunction = LogLoss)
 ```
 
 ## glmnet
 
-Uno de los métodos elegidos para general nuestro modelo de clasificación es *glmnet* (*Lasso and Elastic-Net Regularized Generalized Linear Models*). Este algoritmo utiliza descenso cíclico coordinado, el cual optimiza sucesivamente la función objetivo sobre cada parémetro con otros fijos, hasta llegar a coverger. Utiliza los parámetros *alpha* y *lambda*. El primero es el modifica el valor de mezcla de la regulzación *elastic net*, variando entre 1 (lasso) y 0 (ridge). El segundo parámetro *lambda* se calcula en función de del valor de *alpha* y el número de valores de la secuencia (por defecto 100).
+Uno de los métodos elegidos para generar nuestro modelo de clasificación es *glmnet* (*Lasso and Elastic-Net Regularized Generalized Linear Models*). Este algoritmo utiliza descenso cíclico coordinado, en el cual optimiza sucesivamente la función objetivo sobre cada parémetro, hasta llegar a coverger. También utiliza los parámetros *alpha* y *lambda*. El primero se emplea para modificar el valor de "mezcla" de la regulzación *elastic net*; tomando valores entre 1 (lasso) y 0 (ridge). El segundo parámetro *lambda* se calcula en función de del valor de *alpha* y el número de valores de la secuencia (por defecto 100).
 
 ```{r}
 glmnet.info <- caret::getModelInfo("glmnet")
-glmnet.info$fda$parameters
+glmnet.info$glmnet$parameters
 ```
 
-A continuación, en el modelo *modelGLM.default* realizamos un entrenamiento utilizando 3^2 combinaciones de dichos parámetros. En el modelo *modelGLM.custom* amplicamos el parámetro *tuneLength = 20*, por lo que combinaremos 20 valores de cada uno de los parámetros, obteniedo un total de 20^2 combinaciones.
+A continuación, en el modelo *modelGLM.default* realizamos un entrenamiento utilizando 3^2 combinaciones de dichos parámetros. Y en el modelo *modelGLM.custom* amplicamos el parámetro *tuneLength = 20*, por lo que combinaremos 20 valores de cada uno de los parámetros, obteniedo un total de 20^2 combinaciones. 
+
+Por medio del parámetro *preProcess*, se aplican las siguientes acciones de preprocesado: *center* sustrae la media de cada variable a todos valores de la misma; mientras *scale* divide dichos valores por la desviación típica. En cuanto al método *pca* aplica la técnica de análisis de componentes principales ([PCA](https://es.wikipedia.org/wiki/PCA)), con el fin de reducir la dimensionalidad del conjunto de datos.
 
 ```{r}
 modelGLM.default <- caret::train(shot_made_flag ~ ., data = subset.train, method = "glmnet", trControl = control,
-                         preProcess = c("center", "scale"), metric = "LogLoss", maximize = FALSE)
+                         preProcess = c("center", "scale", "pca"), metric = "LogLoss", maximize = FALSE)
 
 modelGLM.custom <- caret::train(shot_made_flag ~ ., data = subset.train, method = "glmnet", trControl = control,
                          preProcess = c("center", "scale", "pca"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
@@ -373,7 +372,7 @@ plot(modelGLM.custom)
 
 ## fda
 
-A continuación, entrenaremos el modelo utilizando un análisis discriminante flexible (*Flexible Discriminant Analysis*). Este tipo de modelo de clasificación se basa en una combinación de modelos de regresión linear. Utiliza un *scoring* óptimo para transformar la variable de respuesta de forma que los datos sean más fáciles de separar linealmente. Así mismo, utiliza múltiples *splines*  adaptativos para generar la supercicie discriminante.
+A continuación, entrenaremos el modelo utilizando un análisis discriminante flexible (*Flexible Discriminant Analysis*). Este tipo de modelo de clasificación se basa en una combinación de modelos de regresión linear. Utiliza un *scoring* óptimo para transformar la variable de respuesta, de forma que los datos sean más fáciles de separar linealmente. Así mismo, utiliza múltiples *splines*  adaptativos para generar la supercicie discriminante.
 
 ```{r}
 fpa.info <- caret::getModelInfo("fda")
@@ -395,7 +394,7 @@ plot(modelFDA.custom)
 
 ## Validación
 
-Ahora se procede a realizar la predicción sobre el subconjunto de validación. 
+Ahora se procede a realizar la predicción sobre el subconjunto de validación. Dado que necesitamos obtener las probabilidades asociadas a la clasificación de cada instancia en cada clase. Así mismo, dado que el *score* utilizado por *Kaggle* es *Log Loss*, una vez obtenidas las predicciones sobre el subconjunto de test, se procede a calcular dicha métrica para todos los modelos entrenados.
 
 ```{r}
 validation.partition.y <- ifelse(subset.test$shot_made_flag == "SUCCESS", 1, 0)
@@ -418,30 +417,30 @@ score.fda.custom.validation <- MLmetrics::LogLoss(y_pred = prediction.fda.custom
 score.fda.custom.validation
 ```
 
-Dado que el ambos modelos (*fda* y *glmnet*) han sido entrenados con las mismas hojas (no se ha modificado la semilla), podemos comparar los resultados de la crossvalidación de ambos modelos.
+Dado que ambos modelos (*fda* y *glmnet*) han sido entrenados con las mismas hojas (no se ha modificado la semilla), podemos comparar los resultados de la crossvalidación de los mismos. Podemos observar que el *p-valor* es menor a < 2.2e-16, por consiguiente la probabilidad de que rechacemos la hipótesis nula erroneamente, es muy baja. Ergo, podemos decir que hay una diferencia real entre ambos modelos. También se aprecia que la diferencia de medias entre ambos modelos es de *0.04432*. Al ser una media positiva y *fda* el segundo modelo, se puede decir que este obtiene unos mejores valores con *fda*.
 
 ```{r}
-resamples.result <- caret::resamples(list(glm = modelGLM, fda = modelFDA.custom))
+resamples.result <- caret::resamples(list(glm = modelGLM.custom, fda = modelFDA.custom))
 summary(resamples.result)
 
 lattice::xyplot(resamples.result, what = "BlandAltman")
+lattice::xyplot(resamples.result, what = "scatter")
 
 diffs <- diff(resamples.result)
 summary(diffs)
 ```
-
 
 # Generación del modelo final y predicción
 
 Ahora procedemos a realizar el entrenamiento del modelo utilizando todas las instancias que conforman el conjunto de entrenamiento que nos proporciona *Kaggle*. Para ello, utilizamos el método que mejores valores ha obtenido en la validación cruzada: *fda* con *tuneLength = 20*.
 
 ```{r}
-model <- caret::train(shot_made_flag ~ ., data = train, method = "fda", trControl = control, 
+model <- caret::train(shot_made_flag ~ ., data = train, method = "fda", trControl = control,
                          preProcess = c("center", "scale", "pca"), tuneLength = 20, metric = "LogLoss", maximize = FALSE)
 plot(model)
 ```
 
-Antes de generar una clasificación sobre el conjunto de test, necesitamos eliminar y transformar las variables tal y como lo hicimos en el conjunto de entrenamiento. El modelo ha sido entrenado para "comprender" unas determinadas variables de tereminados tipos, por lo que es necesario aplicar las mismas operaciones.
+Antes de generar una clasificación sobre el conjunto de test, necesitamos eliminar y transformar las variables tal y como lo hicimos en el conjunto de entrenamiento. El modelo ha sido entrenado para "comprender" unas determinadas variables de determinados tipos, por lo que es necesario aplicar las mismas operaciones.
 
 ```{r}
 shot_id <- test$shot_id
@@ -452,26 +451,46 @@ test <- dplyr::select(test, - team_id)
 test <- dplyr::select(test, - team_name)
 test <- dplyr::select(test, - shot_id)
 test <- dplyr::select(test, - game_date)
-test <- dplyr::select(test, - loc_x)
-test <- dplyr::select(test, - loc_y)
 test <- dplyr::select(test, - lat)
+test <- dplyr::select(test, - lon)
 
 test$visitor <- ifelse(grepl("@", test$matchup), 0, 1)
 test$visitor <- as.factor(test$visitor)
 test <- dplyr::select(test, - matchup)
 
-for (i in 1:ncol(test)) {
-    if (is.factor(test[, i])) {
-        levels(test[, i]) <- c(1:length(levels(test[, i])))
-        test[, i] <- as.numeric(test[, i])
+for (feature in categorical.features) {
+    if (is.factor(test[, feature])) {
+        levels(test[, feature]) <- c(1:length(levels(test[, feature])))
+        test[, feature] <- as.numeric(test[, feature])
     }
 }
 ```
 
-Finalmente, generamos la clasificación sobre el conjunto de test que nos ha proporcionado *Kaggle*. 
+Finalmente, generamos la clasificación sobre el conjunto de test que nos ha proporcionado *Kaggle*. El *score* proporcionado por dicha plataforma, basado en la métrica *LogLoss*, es de **0.64530**.
+
 
 ```{r}
 prediction <- predict(model, newdata = test, type = "prob")
-prediction.table <- data.frame(shot_id = shot_id, shot_made_flag = prediction$ERROR)
+prediction.table <- data.frame(shot_id = shot_id, shot_made_flag = prediction$SUCCESS)
 write.csv(prediction.table, "prediction.csv", row.names = FALSE)
 ```
+
+# Conclusiones
+
+Cabe destacar que los valores de *Logarithmic Loss* obtenidos a lo largo de flujo de trabajo, no han sido muy satisfactorios. Sin embargo, la mejor puntuación que consta en esta competición ha sido de *0.56528*. Esto se debe a la elevada dificultad de generar un modelo fiable con los datos del dataset. Tal y como observamos al estudiar cada una de las características, no existe ninguna variable que muestre una clara relacción con la variable clase. Además, pensado en el dominio del problema, existen muchas circustancias de los partidos de las que no tenemos información y pueden ser decisivas. Por ejemplo, distancia con respecto al jugador más próximo en el momento del tiro, estado de forma del jugador, estado de forma del equipo, cansancio, minutos jugados por el jugador en el momento de cada tiro, etc.
+
+# Bibliografía
+
+- https://cran.r-project.org/web/packages/fda/fda.pdf
+
+- http://trymachinelearning.com/machine-learning-algorithms/dimensionality-reduction/flexible-discriminant-analysis/
+
+- https://www.researchgate.net/publication/2889611_Flexible_Discriminant_Analysis_by_Optimal_Scoring
+
+- https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html
+
+- https://en.wikipedia.org/wiki/Elastic_net_regularization
+
+- https://cran.r-project.org/web/packages/glmnet/index.html
+
+- http://wiki.fast.ai/index.php/Log_Loss
